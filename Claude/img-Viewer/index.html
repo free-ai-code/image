@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像ビューアー</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .viewer-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* トップバー */
+        .toolbar {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            backdrop-filter: blur(10px);
+        }
+
+        .title {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+
+        .info {
+            display: flex;
+            gap: 30px;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .zoom-info, .image-info {
+            opacity: 0.7;
+        }
+
+        /* 画像表示エリア */
+        .image-viewer {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a0a;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        .image-viewer.dragging {
+            cursor: grabbing;
+        }
+
+        .image-canvas {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            transition: filter 0.2s ease;
+        }
+
+        .image-canvas:hover {
+            filter: brightness(1.05);
+        }
+
+        /* コントロールボタン */
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 12px 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        button {
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 8px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button:hover {
+            background: #444;
+            border-color: #666;
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .separator {
+            width: 1px;
+            height: 20px;
+            background: #555;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 10px;
+        }
+
+        input[type="range"] {
+            width: 120px;
+            height: 5px;
+            border-radius: 5px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+        }
+
+        .footer {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 20px;
+            font-size: 12px;
+            opacity: 0.6;
+            border-top: 1px solid #333;
+            backdrop-filter: blur(10px);
+        }
+
+        .fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* レスポンシブ */
+        @media (max-width: 600px) {
+            .info {
+                gap: 15px;
+                font-size: 12px;
+            }
+
+            button {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+
+            .slider-group {
+                padding: 0 5px;
+            }
+
+            input[type="range"] {
+                width: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <!-- トップバー -->
+        <div class="toolbar">
+            <div class="title">🖼️ 画像ビューアー</div>
+            <div class="info">
+                <div class="image-info">
+                    <span id="imageCounter">画像を選択してください</span>
+                </div>
+                <div class="zoom-info">
+                    <span id="zoomLevel">100%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 画像表示エリア -->
+        <div class="image-viewer" id="imageViewer">
+            <img class="image-canvas" id="imageCanvas" alt="画像">
+        </div>
+
+        <!-- コントロール -->
+        <div class="controls">
+            <button id="openFile" title="ファイルを開く (Ctrl+O)">
+                📁 開く
+            </button>
+
+            <div class="separator"></div>
+
+            <button id="prevBtn" disabled title="前の画像 (←)">◀ 前へ</button>
+            <button id="nextBtn" disabled title="次の画像 (→)">次へ ▶</button>
+
+            <div class="separator"></div>
+
+            <button id="rotateLeft" disabled title="左回転 (L)">🔄 左</button>
+            <button id="rotateRight" disabled title="右回転 (R)">回転 🔄</button>
+
+            <div class="separator"></div>
+
+            <button id="fitToWindow" disabled title="ウィンドウにフィット (F)">ぴったり</button>
+            <button id="resetZoom" disabled title="リセット (0)">100%</button>
+
+            <div class="slider-group">
+                <button id="zoomOut" disabled title="ズームアウト (-)" style="padding: 8px 10px;">−</button>
+                <input type="range" id="zoomSlider" min="10" max="400" value="100" title="ズーム">
+                <button id="zoomIn" disabled title="ズームイン (+)" style="padding: 8px 10px;">+</button>
+            </div>
+
+            <div class="separator"></div>
+
+            <button id="fullscreenBtn" disabled title="フルスクリーン (F11)">全画面</button>
+            <button id="downloadBtn" disabled title="ダウンロード (D)">💾 DL</button>
+        </div>
+
+        <!-- フッター -->
+        <div class="footer" id="footer">
+            💡 ヒント: ↑↓キーで前後の画像、マウスホイールでズーム、ドラッグで移動
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*" multiple>
+
+    <script>
+        class ImageViewer {
+            constructor() {
+                this.images = [];
+                this.currentIndex = 0;
+                this.zoomLevel = 100;
+                this.rotation = 0;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.isDragging = false;
+                this.dragStartX = 0;
+                this.dragStartY = 0;
+
+                this.canvas = document.getElementById('imageCanvas');
+                this.viewer = document.getElementById('imageViewer');
+                this.zoomSlider = document.getElementById('zoomSlider');
+                this.zoomLevelText = document.getElementById('zoomLevel');
+                this.imageCounter = document.getElementById('imageCounter');
+
+                this.initializeEventListeners();
+                this.setupFileInput();
+            }
+
+            initializeEventListeners() {
+                // ファイル選択
+                document.getElementById('openFile').addEventListener('click', () => {
+                    document.getElementById('fileInput').click();
+                });
+
+                // ナビゲーション
+                document.getElementById('prevBtn').addEventListener('click', () => this.previousImage());
+                document.getElementById('nextBtn').addEventListener('click', () => this.nextImage());
+
+                // 回転
+                document.getElementById('rotateLeft').addEventListener('click', () => this.rotate(-90));
+                document.getElementById('rotateRight').addEventListener('click', () => this.rotate(90));
+
+                // ズーム
+                document.getElementById('zoomIn').addEventListener('click', () => this.zoom(1.2));
+                document.getElementById('zoomOut').addEventListener('click', () => this.zoom(0.8));
+                document.getElementById('resetZoom').addEventListener('click', () => this.resetView());
+                document.getElementById('fitToWindow').addEventListener('click', () => this.fitToWindow());
+
+                zoomSlider.addEventListener('input', (e) => {
+                    this.zoomLevel = parseInt(e.target.value);
+                    this.updateZoom();
+                });
+
+                // ドラッグ
+                this.viewer.addEventListener('mousedown', (e) => this.startDrag(e));
+                document.addEventListener('mousemove', (e) => this.drag(e));
+                document.addEventListener('mouseup', () => this.endDrag());
+
+                // ホイールズーム
+                this.viewer.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    this.zoom(e.deltaY > 0 ? 0.9 : 1.1);
+                });
+
+                // キーボード操作
+                document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+
+                // フルスクリーン
+                document.getElementById('fullscreenBtn').addEventListener('click', () => this.toggleFullscreen());
+
+                // ダウンロード
+                document.getElementById('downloadBtn').addEventListener('click', () => this.downloadImage());
+            }
+
+            setupFileInput() {
+                document.getElementById('fileInput').addEventListener('change', (e) => {
+                    const files = Array.from(e.target.files);
+                    this.images = files.map(file => ({
+                        file: file,
+                        url: URL.createObjectURL(file),
+                        name: file.name
+                    }));
+
+                    if (this.images.length > 0) {
+                        this.currentIndex = 0;
+                        this.resetView();
+                        this.displayImage();
+                    }
+                });
+            }
+
+            displayImage() {
+                if (this.images.length === 0) return;
+
+                const img = this.images[this.currentIndex];
+                this.canvas.src = img.url;
+                this.imageCounter.textContent = `${this.currentIndex + 1} / ${this.images.length} - ${img.name}`;
+                this.updateButtonStates();
+            }
+
+            nextImage() {
+                if (this.currentIndex < this.images.length - 1) {
+                    this.currentIndex++;
+                    this.resetView();
+                    this.displayImage();
+                }
+            }
+
+            previousImage() {
+                if (this.currentIndex > 0) {
+                    this.currentIndex--;
+                    this.resetView();
+                    this.displayImage();
+                }
+            }
+
+            rotate(angle) {
+                this.rotation = (this.rotation + angle) % 360;
+                this.applyTransform();
+            }
+
+            zoom(factor) {
+                const newZoom = Math.max(10, Math.min(400, this.zoomLevel * factor));
+                this.zoomLevel = newZoom;
+                this.zoomSlider.value = this.zoomLevel;
+                this.updateZoom();
+            }
+
+            updateZoom() {
+                this.zoomLevelText.textContent = `${Math.round(this.zoomLevel)}%`;
+                this.applyTransform();
+            }
+
+            fitToWindow() {
+                this.zoomLevel = 100;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.rotation = 0;
+                this.zoomSlider.value = 100;
+                this.applyTransform();
+                this.updateZoom();
+            }
+
+            resetView() {
+                this.zoomLevel = 100;
+                this.rotation = 0;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.zoomSlider.value = 100;
+                this.updateZoom();
+            }
+
+            applyTransform() {
+                this.canvas.style.transform = `
+                    translate(${this.offsetX}px, ${this.offsetY}px)
+                    rotate(${this.rotation}deg)
+                    scale(${this.zoomLevel / 100})
+                `;
+            }
+
+            startDrag(e) {
+                if (this.zoomLevel > 100) {
+                    this.isDragging = true;
+                    this.dragStartX = e.clientX - this.offsetX;
+                    this.dragStartY = e.clientY - this.offsetY;
+                    this.viewer.classList.add('dragging');
+                }
+            }
+
+            drag(e) {
+                if (this.isDragging) {
+                    this.offsetX = e.clientX - this.dragStartX;
+                    this.offsetY = e.clientY - this.dragStartY;
+                    this.applyTransform();
+                }
+            }
+
+            endDrag() {
+                this.isDragging = false;
+                this.viewer.classList.remove('dragging');
+            }
+
+            handleKeyboard(e) {
+                if (this.images.length === 0) return;
+
+                switch(e.key) {
+                    case 'ArrowRight':
+                        this.nextImage();
+                        break;
+                    case 'ArrowLeft':
+                        this.previousImage();
+                        break;
+                    case '+':
+                    case '=':
+                        this.zoom(1.2);
+                        break;
+                    case '-':
+                        this.zoom(0.8);
+                        break;
+                    case '0':
+                        this.resetView();
+                        break;
+                    case 'l':
+                    case 'L':
+                        this.rotate(-90);
+                        break;
+                    case 'r':
+                    case 'R':
+                        this.rotate(90);
+                        break;
+                    case 'f':
+                    case 'F':
+                        if (e.key === 'F') {
+                            this.fitToWindow();
+                        }
+                        break;
+                    case 'd':
+                    case 'D':
+                        this.downloadImage();
+                        break;
+                    case 'F11':
+                        e.preventDefault();
+                        this.toggleFullscreen();
+                        break;
+                }
+            }
+
+            toggleFullscreen() {
+                const container = document.querySelector('.viewer-container');
+                
+                if (!document.fullscreenElement) {
+                    container.requestFullscreen().catch(err => {
+                        alert(`フルスクリーンエラー: ${err.message}`);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+
+            downloadImage() {
+                const img = this.images[this.currentIndex];
+                const a = document.createElement('a');
+                a.href = img.url;
+                a.download = img.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+
+            updateButtonStates() {
+                const hasImages = this.images.length > 0;
+                const canGoNext = this.currentIndex < this.images.length - 1;
+                const canGoPrev = this.currentIndex > 0;
+
+                document.getElementById('prevBtn').disabled = !canGoPrev;
+                document.getElementById('nextBtn').disabled = !canGoNext;
+                document.getElementById('rotateLeft').disabled = !hasImages;
+                document.getElementById('rotateRight').disabled = !hasImages;
+                document.getElementById('zoomIn').disabled = !hasImages;
+                document.getElementById('zoomOut').disabled = !hasImages;
+                document.getElementById('resetZoom').disabled = !hasImages;
+                document.getElementById('fitToWindow').disabled = !hasImages;
+                document.getElementById('fullscreenBtn').disabled = !hasImages;
+                document.getElementById('downloadBtn').disabled = !hasImages;
+            }
+        }
+
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            new ImageViewer();
+        });
+    </script>
+</body>
+</html>
