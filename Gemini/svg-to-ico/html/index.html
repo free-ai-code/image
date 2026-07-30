@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SVG to ICO コンバーター</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 0 20px;
+      line-height: 1.5;
+      color: #333;
+    }
+    .drop-zone {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      background: #fafafa;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #0066cc;
+      background: #f0f7ff;
+    }
+    .options {
+      margin: 20px 0;
+      display: flex;
+      gap: 15px;
+      align-items: center;
+    }
+    input[type="file"] {
+      display: none;
+    }
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      width: 100%;
+      font-size: 16px;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #preview {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .preview-item {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+    }
+    .preview-item img {
+      border: 1px solid #ddd;
+      background: repeating-conic-gradient(#eee 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>SVG → ICO コンバーター</h2>
+  
+  <div class="drop-zone" id="dropZone">
+    <p>SVGファイルをここにドラッグ＆ドロップ<br>またはクリックして選択</p>
+    <input type="file" id="fileInput" accept=".svg">
+  </div>
+
+  <div class="options">
+    <label>サイズ指定:</label>
+    <label><input type="checkbox" value="16" checked> 16x16</label>
+    <label><input type="checkbox" value="32" checked> 32x32</label>
+    <label><input type="checkbox" value="48" checked> 48x48</label>
+    <label><input type="checkbox" value="64"> 64x64</label>
+  </div>
+
+  <button id="convertBtn" disabled>ICOに変換してダウンロード</button>
+
+  <div id="preview"></div>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const preview = document.getElementById('preview');
+
+    let currentSvgFile = null;
+
+    // ファイル選択ハンドラ
+    dropZone.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+
+    function handleFile(file) {
+      if (!file.name.endsWith('.svg') && file.type !== 'image/svg+xml') {
+        alert('SVGファイルを選択してください');
+        return;
+      }
+      currentSvgFile = file;
+      convertBtn.disabled = false;
+      dropZone.querySelector('p').textContent = `選択中: ${file.name}`;
+      updatePreview();
+    }
+
+    // 選択サイズ一覧を取得
+    function getSelectedSizes() {
+      const checkboxes = document.querySelectorAll('.options input[type="checkbox"]:checked');
+      return Array.from(checkboxes).map(cb => parseInt(cb.value));
+    }
+
+    // プレビュー表示
+    async function updatePreview() {
+      preview.innerHTML = '';
+      if (!currentSvgFile) return;
+
+      const sizes = getSelectedSizes();
+      const svgUrl = URL.createObjectURL(currentSvgFile);
+
+      for (const size of sizes) {
+        const canvas = await renderSvgToCanvas(svgUrl, size);
+        const div = document.createElement('div');
+        div.className = 'preview-item';
+        
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL();
+        
+        div.appendChild(img);
+        div.appendChild(document.createElement('br'));
+        div.appendChild(document.createTextNode(`${size}px`));
+        preview.appendChild(div);
+      }
+    }
+
+    // SVGをCanvasに描画
+    function renderSvgToCanvas(svgUrl, size) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, size, size);
+          resolve(canvas);
+        };
+        img.src = svgUrl;
+      });
+    }
+
+    // ICOヘッダーおよびバイナリデータの生成
+    async function createIcoBinary(canvasList) {
+      const pngBuffers = await Promise.all(
+        canvasList.map(canvas => 
+          new Promise(resolve => {
+            canvas.toBlob(blob => {
+              blob.arrayBuffer().then(resolve);
+            }, 'image/png');
+          })
+        )
+      );
+
+      const count = pngBuffers.length;
+      const headerSize = 6;
+      const directorySize = 16 * count;
+      let offset = headerSize + directorySize;
+
+      // ヘッダー (6 bytes)
+      const header = new Uint8Array([
+        0, 0,             // Reserved (0)
+        1, 0,             // Type: 1 = ICO
+        count & 0xFF, (count >> 8) & 0xFF // アイコン数
+      ]);
+
+      const directories = [];
+      for (let i = 0; i < count; i++) {
+        const canvas = canvasList[i];
+        const buffer = pngBuffers[i];
+        const width = canvas.width >= 256 ? 0 : canvas.width;
+        const height = canvas.height >= 256 ? 0 : canvas.height;
+        const size = buffer.byteLength;
+
+        // ディレクトリエントリ (16 bytes)
+        const dir = new Uint8Array([
+          width,
+          height,
+          0,              // 色数 (0 = 256色以上)
+          0,              // Reserved (0)
+          1, 0,           // カラープレーン (1)
+          32, 0,          // ビット深度 (32bit)
+          size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF, (size >> 24) & 0xFF, // データサイズ
+          offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF // ファイルオフセット
+        ]);
+        directories.push(dir);
+        offset += size;
+      }
+
+      // バッファの結合
+      const totalSize = offset;
+      const finalBuffer = new Uint8Array(totalSize);
+      
+      finalBuffer.set(header, 0);
+      let currentPos = headerSize;
+      
+      for (const dir of directories) {
+        finalBuffer.set(dir, currentPos);
+        currentPos += 16;
+      }
+      
+      for (const buffer of pngBuffers) {
+        finalBuffer.set(new Uint8Array(buffer), currentPos);
+        currentPos += buffer.byteLength;
+      }
+
+      return finalBuffer;
+    }
+
+    // ダウンロード実行
+    convertBtn.addEventListener('click', async () => {
+      if (!currentSvgFile) return;
+
+      const sizes = getSelectedSizes();
+      if (sizes.length === 0) {
+        alert('サイズを1つ以上選択してください');
+        return;
+      }
+
+      const svgUrl = URL.createObjectURL(currentSvgFile);
+      const canvasList = [];
+      for (const size of sizes) {
+        const canvas = await renderSvgToCanvas(svgUrl, size);
+        canvasList.push(canvas);
+      }
+
+      const icoBuffer = await createIcoBinary(canvasList);
+      const blob = new Blob([icoBuffer], { type: 'image/x-icon' });
+      
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = currentSvgFile.name.replace(/\.svg$/i, '') + '.ico';
+      a.click();
+    });
+  </script>
+</body>
+</html>
