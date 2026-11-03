@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #111;
+      color: #eee;
+    }
+    .wrap {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    input, button {
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      background: #3b82f6;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    canvas {
+      display: none;
+    }
+    .preview {
+      margin-top: 16px;
+      background: #222;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 10px;
+      background: #fff;
+    }
+    a {
+      display: inline-block;
+      margin-top: 10px;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <input type="file" id="svgInput" accept=".svg,image/svg+xml">
+    <button id="convertBtn">PNGに変換</button>
+    <a id="downloadLink" style="display:none;" download="image.png">PNGをダウンロード</a>
+
+    <div class="preview">
+      <div>プレビュー</div>
+      <img id="previewImg" alt="preview">
+    </div>
+
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const svgInput = document.getElementById('svgInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const downloadLink = document.getElementById('downloadLink');
+    const previewImg = document.getElementById('previewImg');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    convertBtn.addEventListener('click', () => {
+      const file = svgInput.files[0];
+      if (!file) {
+        alert('SVGファイルを選択してください');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const svgText = reader.result;
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        const img = new Image();
+        img.onload = () => {
+          const width = img.width || 1000;
+          const height = img.height || 1000;
+
+          canvas.width = width;
+          canvas.height = height;
+
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0);
+
+          const pngDataUrl = canvas.toDataURL('image/png');
+          previewImg.src = pngDataUrl;
+
+          downloadLink.href = pngDataUrl;
+          downloadLink.style.display = 'inline-block';
+
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>
