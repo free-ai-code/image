@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 16px;
+      background: #111;
+      color: #eee;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    input, button, textarea {
+      width: 100%;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    textarea {
+      height: 500px;
+      background: #000;
+      color: #0f0;
+      font-family: monospace;
+      white-space: pre;
+      resize: vertical;
+      padding: 12px;
+    }
+    canvas {
+      display: none;
+    }
+    button {
+      padding: 10px 14px;
+      border: 0;
+      background: #3b82f6;
+      color: #fff;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <input type="file" id="fileInput" accept="image/*">
+    <button id="convertBtn">AAに変換</button>
+    <textarea id="output" placeholder="ここにAAが表示されます"></textarea>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const output = document.getElementById('output');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const chars = '@%#*+=-:. '; // 黒いほど濃い文字
+
+    function imageToAA(img) {
+      const maxWidth = 120;
+      const aspectRatio = img.height / img.width;
+      const width = maxWidth;
+      const height = Math.floor(width * aspectRatio * 0.5);
+
+      canvas.width = width;
+      canvas.height = height;
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const data = ctx.getImageData(0, 0, width, height).data;
+      let aa = '';
+
+      for (let y = 0; y < height; y++) {
+        let line = '';
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
+          const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+          const index = Math.floor((brightness / 255) * (chars.length - 1));
+          line += chars[index];
+        }
+        aa += line + '\n';
+      }
+
+      return aa;
+    }
+
+    convertBtn.addEventListener('click', () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        alert('画像を選択してください');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          output.value = imageToAA(img);
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  </script>
+</body>
+</html>
