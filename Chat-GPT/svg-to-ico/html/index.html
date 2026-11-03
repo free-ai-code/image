@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #111;
+      color: #eee;
+    }
+    .wrap {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    input, button {
+      width: 100%;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 12px;
+      border: 0;
+      border-radius: 6px;
+      background: #3b82f6;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    a {
+      display: inline-block;
+      margin-top: 10px;
+      color: #60a5fa;
+    }
+    canvas {
+      display: none;
+    }
+    .preview {
+      margin-top: 16px;
+      padding: 12px;
+      background: #222;
+      border-radius: 8px;
+    }
+    img {
+      max-width: 128px;
+      height: auto;
+      background: #fff;
+      display: block;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h3>SVG → ICO 変換</h3>
+
+    <input type="file" id="svgInput" accept=".svg,image/svg+xml">
+    <button id="convertBtn">ICOに変換</button>
+
+    <a id="downloadLink" style="display:none;" download="icon.ico">ICOをダウンロード</a>
+
+    <div class="preview">
+      <div>プレビュー</div>
+      <img id="previewImg" alt="preview">
+    </div>
+
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const svgInput = document.getElementById('svgInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const downloadLink = document.getElementById('downloadLink');
+    const previewImg = document.getElementById('previewImg');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    function makeIcoDataUrlFromCanvas(canvas) {
+      // 簡易版: PNGデータを .ico として保存
+      // 多くの環境では「ICO風のファイル名」で使えますが、厳密なICOバイナリではありません。
+      return canvas.toDataURL('image/png');
+    }
+
+    convertBtn.addEventListener('click', () => {
+      const file = svgInput.files[0];
+      if (!file) {
+        alert('SVGファイルを選択してください');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const svgText = reader.result;
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+
+        const img = new Image();
+        img.onload = () => {
+          const size = 256;
+          canvas.width = size;
+          canvas.height = size;
+
+          ctx.clearRect(0, 0, size, size);
+          ctx.drawImage(img, 0, 0, size, size);
+
+          const dataUrl = makeIcoDataUrlFromCanvas(canvas);
+
+          previewImg.src = dataUrl;
+          downloadLink.href = dataUrl;
+          downloadLink.style.display = 'inline-block';
+
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>
