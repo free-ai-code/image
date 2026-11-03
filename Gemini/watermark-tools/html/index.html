@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウォーターマーク（透かし）作成ツール</title>
+    <style>
+        body { font-family: sans-serif; max-width: 700px; margin: 30px auto; padding: 20px; background: #f9f9f9; }
+        .container { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .control { margin-bottom: 15px; }
+        label { display: inline-block; width: 140px; font-weight: bold; }
+        input[type="text"], input[type="file"] { width: 100%; max-width: 300px; padding: 5px; box-sizing: border-box; }
+        #canvasContainer { margin-top: 20px; text-align: center; background: #eee; padding: 10px; border-radius: 4px; display: none; }
+        canvas { max-width: 100%; height: auto; border: 1px solid #ccc; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 15px; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>画像デッドコピー・無断転載防止ツール</h2>
+    <p style="font-size: 14px; color: #666;">画像に薄い文字を重ねて、自作発言やフリー素材化を防ぎます。</p>
+    
+    <div class="control">
+        <label for="imageInput">1. 画像を選択：</label>
+        <input type="file" id="imageInput" accept="image/*">
+    </div>
+    
+    <div class="control">
+        <label for="watermarkText">2. 透かし文字：</label>
+        <input type="text" id="watermarkText" value="© 2026 YourName DO NOT COPY">
+    </div>
+    
+    <div class="control">
+        <label for="opacityRange">3. 文字の薄さ：</label>
+        <input type="range" id="opacityRange" min="5" max="90" value="20">
+    </div>
+
+    <div class="control">
+        <label for="blurRange">4. 文字のぼかし：</label>
+        <input type="range" id="blurRange" min="0" max="10" value="0" step="0.5">
+    </div>
+
+    <div id="canvasContainer">
+        <h3>プレビュー</h3>
+        <canvas id="myCanvas"></canvas>
+        <br>
+        <button id="downloadBtn">透かし入り画像をダウンロード</button>
+    </div>
+</div>
+
+<script>
+    const imageInput = document.getElementById('imageInput');
+    const watermarkText = document.getElementById('watermarkText');
+    const opacityRange = document.getElementById('opacityRange');
+    const blurRange = document.getElementById('blurRange');
+    const canvas = document.getElementById('myCanvas');
+    const ctx = canvas.getContext('2d');
+    const canvasContainer = document.getElementById('canvasContainer');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let loadedImage = null;
+
+    // 画像が読み込まれたとき
+    imageInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            loadedImage = new Image();
+            loadedImage.onload = () => {
+                canvasContainer.style.display = 'block';
+                draw();
+            };
+            loadedImage.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 設定が変わったら再描画
+    watermarkText.addEventListener('input', draw);
+    opacityRange.addEventListener('input', draw);
+    blurRange.addEventListener('input', draw);
+
+    function draw() {
+        if (!loadedImage) return;
+
+        // 元画像のサイズにキャンバスを合わせる
+        canvas.width = loadedImage.width;
+        canvas.height = loadedImage.height;
+
+        // 1. 元画像を描画
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(loadedImage, 0, 0);
+
+        // 2. 透かし文字の設定
+        const text = watermarkText.value;
+        const opacity = opacityRange.value / 100;
+        const blur = blurRange.value;
+
+        // フォントサイズを画像の大きさに合わせて自動調整
+        const fontSize = Math.max(20, Math.floor(canvas.width / 20));
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // ぼかし効果の適用
+        if (blur > 0) {
+            ctx.filter = `blur(${blur}px)`;
+        } else {
+            ctx.filter = 'none';
+        }
+
+        // 文字の透明度と色
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`; // 白い半透明文字
+        ctx.strokeStyle = `rgba(0, 0, 0, ${opacity})`;    // 黒い半透明の縁取り（どんな背景でも見えるように）
+        ctx.lineWidth = fontSize / 8;
+
+        // 3. 画面全体に斜めに敷き詰める（全面ガード型）
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(-30 * Math.PI / 180); // 30度傾ける
+        
+        // グリッド状に文字を配置して、切り抜かれても残るようにする
+        const stepX = fontSize * 8;
+        const stepY = fontSize * 3;
+        for (let x = -canvas.width; x < canvas.width; x += stepX) {
+            for (let y = -canvas.height; y < canvas.height; y += stepY) {
+                ctx.strokeText(text, x, y);
+                ctx.fillText(text, x, y);
+            }
+        }
+        ctx.restore();
+        ctx.filter = 'none'; // フィルターリセット
+    }
+
+    // ダウンロード機能
+    downloadBtn.addEventListener('click', () => {
+        const link = document.createElement('a');
+        link.download = 'watermarked_image.png';
+        link.href = canvas.toDataURL();
+        link.click();
+    });
+</script>
+
+</body>
+</html>
