@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #111;
+      color: #eee;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    input, button, label {
+      display: block;
+      width: 100%;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 12px;
+      border: 0;
+      border-radius: 6px;
+      background: #3b82f6;
+      color: #fff;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    canvas {
+      display: block;
+      max-width: 100%;
+      margin-top: 16px;
+      background: #222;
+    }
+    a {
+      display: inline-block;
+      margin-top: 10px;
+      color: #60a5fa;
+    }
+    .row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .box {
+      background: #1f1f1f;
+      padding: 12px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="box">
+      <input type="file" id="fileInput" accept="image/png,image/*">
+      
+      <div class="row">
+        <label>
+          モザイクの大きさ
+          <input type="range" id="pixelSize" min="2" max="80" value="16">
+        </label>
+        <label>
+          数値
+          <input type="number" id="pixelSizeNum" min="2" max="80" value="16">
+        </label>
+      </div>
+
+      <button id="convertBtn">モザイクをかける</button>
+      <a id="downloadLink" style="display:none;" download="mosaic.png">画像をダウンロード</a>
+    </div>
+
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const pixelSize = document.getElementById('pixelSize');
+    const pixelSizeNum = document.getElementById('pixelSizeNum');
+    const convertBtn = document.getElementById('convertBtn');
+    const downloadLink = document.getElementById('downloadLink');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let originalImage = null;
+
+    pixelSize.addEventListener('input', () => {
+      pixelSizeNum.value = pixelSize.value;
+    });
+
+    pixelSizeNum.addEventListener('input', () => {
+      pixelSize.value = pixelSizeNum.value;
+    });
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          originalImage = img;
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          downloadLink.style.display = 'none';
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function applyMosaic(img, size) {
+      const w = img.width;
+      const h = img.height;
+
+      canvas.width = w;
+      canvas.height = h;
+
+      // まず縮小して、再拡大することでモザイク化
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+
+      const smallW = Math.max(1, Math.floor(w / size));
+      const smallH = Math.max(1, Math.floor(h / size));
+
+      tempCanvas.width = smallW;
+      tempCanvas.height = smallH;
+
+      tempCtx.imageSmoothingEnabled = true;
+      tempCtx.drawImage(img, 0, 0, smallW, smallH);
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(tempCanvas, 0, 0, smallW, smallH, 0, 0, w, h);
+
+      return canvas.toDataURL('image/png');
+    }
+
+    convertBtn.addEventListener('click', () => {
+      if (!originalImage) {
+        alert('画像を選択してください');
+        return;
+      }
+
+      const size = parseInt(pixelSize.value, 10) || 16;
+      const dataUrl = applyMosaic(originalImage, size);
+
+      downloadLink.href = dataUrl;
+      downloadLink.style.display = 'inline-block';
+    });
+  </script>
+</body>
+</html>
